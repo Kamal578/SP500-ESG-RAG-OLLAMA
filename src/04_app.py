@@ -11,7 +11,7 @@ from llama_index.embeddings.ollama import OllamaEmbedding
 from llama_index.llms.ollama import Ollama
 from llama_index.vector_stores.chroma import ChromaVectorStore
 
-from common import resolve_from_root, runtime_config_from_env
+from common import chroma_persistent_client, resolve_from_root, runtime_config_from_env
 
 
 def collection_exists(client: chromadb.PersistentClient, target: str) -> bool:
@@ -57,6 +57,7 @@ def load_query_engine(
     ollama_base_url: str,
     llm_model: str,
     embed_model_name: str,
+    context_window: int,
     top_k: int,
 ):
     chroma_path = resolve_from_root(chroma_path_value)
@@ -65,7 +66,7 @@ def load_query_engine(
             f"Vector DB path not found: {chroma_path}. Run `python src/02_build_index.py --rebuild` first."
         )
 
-    client = chromadb.PersistentClient(path=str(chroma_path))
+    client = chroma_persistent_client(chroma_path)
     if not collection_exists(client, collection_name):
         raise RuntimeError(
             f"Collection '{collection_name}' not found in {chroma_path}. "
@@ -78,7 +79,13 @@ def load_query_engine(
             f"Collection '{collection_name}' is empty. Run `python src/02_build_index.py --rebuild` first."
         )
 
-    llm = Ollama(model=llm_model, base_url=ollama_base_url, request_timeout=180.0, temperature=0)
+    llm = Ollama(
+        model=llm_model,
+        base_url=ollama_base_url,
+        request_timeout=180.0,
+        temperature=0,
+        context_window=context_window,
+    )
     embed_model = OllamaEmbedding(model_name=embed_model_name, base_url=ollama_base_url)
 
     Settings.llm = llm
@@ -100,6 +107,7 @@ def format_score(score: float | None) -> str:
 def main() -> None:
     cfg = runtime_config_from_env()
     top_k = int(os.getenv("SIMILARITY_TOP_K", "3"))
+    context_window = int(os.getenv("OLLAMA_CONTEXT_WINDOW", "2048"))
 
     st.set_page_config(page_title="S&P 500 ESG RAG", layout="wide")
     st.title("S&P 500 ESG Sustainability Reports RAG")
@@ -111,6 +119,7 @@ def main() -> None:
             cfg.ollama_base_url,
             cfg.llm_model,
             cfg.embed_model,
+            context_window,
             top_k,
         )
     except Exception as exc:
@@ -118,9 +127,13 @@ def main() -> None:
         st.stop()
 
     if vector_count is None:
-        st.caption(f"Collection: {cfg.chroma_collection} | Vector count: unavailable")
+        st.caption(
+            f"Collection: {cfg.chroma_collection} | Vector count: unavailable | Context window: {context_window}"
+        )
     else:
-        st.caption(f"Collection: {cfg.chroma_collection} | Vector count: {vector_count}")
+        st.caption(
+            f"Collection: {cfg.chroma_collection} | Vector count: {vector_count} | Context window: {context_window}"
+        )
 
     with st.form("query_form"):
         question = st.text_input("Ask a question about ESG reports")

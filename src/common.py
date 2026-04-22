@@ -7,6 +7,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
+import chromadb
+from chromadb.config import Settings as ChromaSettings
+
 
 DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434"
 DEFAULT_OLLAMA_LLM_MODEL = "llama3.1"
@@ -43,6 +46,16 @@ def runtime_config_from_env() -> RuntimeConfig:
         chroma_path=os.getenv("CHROMA_PATH", DEFAULT_CHROMA_PATH),
         chroma_collection=os.getenv("CHROMA_COLLECTION", DEFAULT_CHROMA_COLLECTION),
     )
+
+
+def chroma_persistent_client(chroma_path: str | Path) -> chromadb.ClientAPI:
+    path = resolve_from_root(chroma_path)
+    settings = ChromaSettings(
+        anonymized_telemetry=False,
+        is_persistent=True,
+        persist_directory=str(path),
+    )
+    return chromadb.PersistentClient(path=str(path), settings=settings)
 
 
 def sanitize_filename_part(value: object, fallback: str = "UNKNOWN") -> str:

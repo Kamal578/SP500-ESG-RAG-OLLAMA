@@ -11,7 +11,7 @@ from llama_index.embeddings.ollama import OllamaEmbedding
 from llama_index.llms.ollama import Ollama
 from llama_index.vector_stores.chroma import ChromaVectorStore
 
-from common import resolve_from_root, runtime_config_from_env
+from common import chroma_persistent_client, resolve_from_root, runtime_config_from_env
 
 
 DEFAULT_QUESTIONS = [
@@ -31,6 +31,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--ollama-base-url", default=cfg.ollama_base_url)
     parser.add_argument("--llm-model", default=cfg.llm_model)
     parser.add_argument("--embed-model", default=cfg.embed_model)
+    parser.add_argument(
+        "--context-window",
+        type=int,
+        default=int(os.getenv("OLLAMA_CONTEXT_WINDOW", "2048")),
+    )
     parser.add_argument("--top-k", type=int, default=int(os.getenv("SIMILARITY_TOP_K", "3")))
     parser.add_argument("--question", action="append", help="Can be provided multiple times.")
     parser.add_argument("--questions-file", help="Path to a file with one question per line.")
@@ -95,7 +100,7 @@ def load_query_engine(args: argparse.Namespace):
             f"Chroma path not found: {chroma_path}. Run `python src/02_build_index.py --rebuild` first."
         )
 
-    client = chromadb.PersistentClient(path=str(chroma_path))
+    client = chroma_persistent_client(chroma_path)
     if not collection_exists(client, args.collection):
         raise RuntimeError(
             f"Collection '{args.collection}' not found at {chroma_path}. "
@@ -113,6 +118,7 @@ def load_query_engine(args: argparse.Namespace):
         base_url=args.ollama_base_url,
         request_timeout=180.0,
         temperature=0,
+        context_window=args.context_window,
     )
     embed_model = OllamaEmbedding(model_name=args.embed_model, base_url=args.ollama_base_url)
     Settings.llm = llm
@@ -147,6 +153,7 @@ def main() -> int:
         print(f"Loaded collection '{args.collection}' with {count} vectors.")
     print(f"Using LLM model: {args.llm_model}")
     print(f"Using embedding model: {args.embed_model}")
+    print(f"Context window: {args.context_window}")
     print(f"Similarity top-k: {args.top_k}")
 
     for idx, question in enumerate(questions, start=1):

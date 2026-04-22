@@ -10,6 +10,7 @@ from llama_index.embeddings.ollama import OllamaEmbedding
 from llama_index.vector_stores.chroma import ChromaVectorStore
 
 from common import (
+    chroma_persistent_client,
     parse_ticker_year_from_filename,
     resolve_from_root,
     runtime_config_from_env,
@@ -128,7 +129,7 @@ def main() -> int:
     embed_model = OllamaEmbedding(model_name=args.embed_model, base_url=args.ollama_base_url)
     Settings.embed_model = embed_model
 
-    client = chromadb.PersistentClient(path=str(chroma_path))
+    client = chroma_persistent_client(chroma_path)
     collection = get_or_create_collection(client, args.collection, args.rebuild)
     vector_store = ChromaVectorStore(chroma_collection=collection)
     storage_context = StorageContext.from_defaults(vector_store=vector_store)

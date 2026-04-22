@@ -47,6 +47,7 @@ Defaults are built-in, but can be overridden:
 - `CHROMA_PATH` (default: `vector_db`)
 - `CHROMA_COLLECTION` (default: `sp500_esg_reports`)
 - `SIMILARITY_TOP_K` (default: `3`)
+- `OLLAMA_CONTEXT_WINDOW` (default: `2048`)
 
 ## Quick Start (Local)
 ```bash
@@ -92,3 +93,4 @@ streamlit run src/04_app.py
 - `vector_db/` is git-ignored by design (generated local state).
 - `data/` is currently ignored in `.gitignore`; keep a local copy of `preprocessed_content.csv`.
 - Index building can take significant time for this dataset and model setup.
+- Chroma telemetry warnings are suppressed by pinned compatibility deps (`chromadb==0.5.23`, `posthog<4`) and `anonymized_telemetry=False` client settings.

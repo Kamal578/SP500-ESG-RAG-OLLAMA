@@ -17,7 +17,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     OLLAMA_LLM_MODEL=llama3.1 \
     OLLAMA_EMBED_MODEL=nomic-embed-text \
     CHROMA_PATH=vector_db \
-    CHROMA_COLLECTION=sp500_esg_reports
+    CHROMA_COLLECTION=sp500_esg_reports \
+    ANONYMIZED_TELEMETRY=FALSE
 
 WORKDIR /app
 

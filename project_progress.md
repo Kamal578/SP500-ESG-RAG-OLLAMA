@@ -2,7 +2,7 @@
 
 ## Current Snapshot
 - Goal: End-to-end local RAG system over S&P 500 ESG sustainability report text.
-- Status: Core codebase and containerization are implemented. Index rebuild is currently in progress under a pinned Chroma version for runtime stability.
+- Status: Core codebase and containerization are implemented. Index build, evaluation, and local app startup checks have completed successfully.
 
 ## What Has Been Implemented
 
@@ -79,7 +79,11 @@
   - streamlit port mapping `8501:8501`
   - `host.docker.internal` access to host Ollama
   - bind mounts for `data/` and `vector_db/`
-- Chroma dependency is now pinned to `chromadb==0.5.23` to avoid segmentation faults seen with `chromadb 1.5.8` during retrieval/query on this machine.
+- Chroma compatibility hardening:
+  - `chromadb` pinned to `0.5.23` (avoids segfaults observed with `1.5.8` in this environment).
+  - `posthog<4` pinned to fix Chroma telemetry API mismatch (`capture() takes 1 positional argument...`).
+  - Chroma clients are created with `anonymized_telemetry=False`.
+  - Docker and Compose set `ANONYMIZED_TELEMETRY=FALSE`.
 
 ### 7) Repository hygiene
 - Added `vector_db/` to `.gitignore`.
@@ -88,21 +92,22 @@
 - Ollama models installed:
   - `nomic-embed-text:latest`
   - `llama3.1:latest`
-- Current active index rebuild:
+- Latest completed index run:
   - Command: `python src/02_build_index.py --rebuild`
-  - PID at check time: `38428`
   - Collection: `sp500_esg_reports`
-  - Current stored vectors (during run): `4096`
-- Why rebuild is running:
-  - Initial index was built with `chromadb 1.5.8`.
-  - `chromadb 1.5.8` caused segmentation faults during `query`/`peek`/`count` in this environment.
-  - Downgraded and pinned to `chromadb==0.5.23`.
-  - Cleared old `vector_db/` and started a clean rebuild for compatibility.
+  - Documents loaded: `866`
+  - Documents skipped: `3`
+  - Chunks created/stored: `24687`
+- Evaluation status:
+  - `src/03_rag_pipeline.py` executes successfully.
+  - Baseline and RAG outputs are printed for sample questions.
+  - Telemetry warnings are no longer printed after dependency/config updates.
+- App status:
+  - Streamlit app starts successfully on `http://localhost:8501`.
 
 ## What Is Pending
-- Wait for current rebuild to finish.
-- Run `src/03_rag_pipeline.py` end-to-end after rebuild completion.
-- Optionally launch Streamlit UI and dockerized app for interactive checks.
+- Optional: run dockerized app validation (`./scripts/docker_up.sh`).
+- Optional: tune retrieval and generation quality (`SIMILARITY_TOP_K`, prompt wording, question set).
 
 ## Handoff Commands
 Use the shell scripts in `scripts/` (added in this update):
