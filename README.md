@@ -36,6 +36,7 @@ project_root/
 │   ├── 04_app.py
 │   ├── 05_eval_metrics.py
 │   ├── common.py
+│   ├── rag_prompts.py
 │   └── preflight.py
 ├── scripts/
 ├── tests/
@@ -97,6 +98,13 @@ Generated artifacts:
 - `outputs/eval/rag_eval_*.csv`
 - `outputs/eval/rag_metrics_*.json`
 - `outputs/eval/rag_metrics_*.csv`
+
+## Prompting
+- RAG system prompt and synthesis templates are centralized in `src/rag_prompts.py`.
+- The prompt is applied to retrieval answer synthesis in:
+  - `src/03_rag_pipeline.py`
+  - `src/04_app.py`
+- Baseline in `src/03_rag_pipeline.py` remains intentionally unconstrained (`LLM only`) for fair baseline-vs-RAG comparison.
 
 ## Testing
 Install test dependencies and run the full test suite:

@@ -119,7 +119,7 @@ def test_load_query_engine_happy_path_with_mocks(monkeypatch: pytest.MonkeyPatch
             return FakeCollection()
 
     class FakeIndex:
-        def as_query_engine(self, similarity_top_k, llm):
+        def as_query_engine(self, similarity_top_k, llm, text_qa_template, refine_template):
             return "query_engine"
 
     monkeypatch.setattr(module, "chroma_persistent_client", lambda _path: FakeClient())

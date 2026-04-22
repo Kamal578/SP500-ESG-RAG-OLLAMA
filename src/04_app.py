@@ -9,12 +9,17 @@ from typing import Any
 
 import chromadb
 import streamlit as st
-from llama_index.core import Settings, VectorStoreIndex
+from llama_index.core import PromptTemplate, Settings, VectorStoreIndex
 from llama_index.embeddings.ollama import OllamaEmbedding
 from llama_index.llms.ollama import Ollama
 from llama_index.vector_stores.chroma import ChromaVectorStore
 
-from common import chroma_persistent_client, resolve_from_root, runtime_config_from_env
+from common import (
+    chroma_persistent_client,
+    resolve_from_root,
+    runtime_config_from_env,
+)
+from rag_prompts import rag_refine_template_str, rag_text_qa_template_str
 
 
 DEMO_QUESTIONS = [
@@ -376,7 +381,14 @@ def load_query_engine(
 
     vector_store = ChromaVectorStore(chroma_collection=collection)
     index = VectorStoreIndex.from_vector_store(vector_store=vector_store, embed_model=embed_model)
-    query_engine = index.as_query_engine(similarity_top_k=top_k, llm=llm)
+    text_qa_template = PromptTemplate(rag_text_qa_template_str())
+    refine_template = PromptTemplate(rag_refine_template_str())
+    query_engine = index.as_query_engine(
+        similarity_top_k=top_k,
+        llm=llm,
+        text_qa_template=text_qa_template,
+        refine_template=refine_template,
+    )
     vector_count = count_vectors_from_sqlite(chroma_path, collection_name)
     return query_engine, vector_count
 

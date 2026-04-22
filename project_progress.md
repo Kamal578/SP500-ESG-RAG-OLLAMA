@@ -30,6 +30,7 @@
 
 ### 3) RAG pipeline + baseline eval (`src/03_rag_pipeline.py`)
 - Loads persisted Chroma index and builds query engine (`top_k`, default `3`).
+- Applies a dedicated ESG system prompt and response templates for RAG synthesis.
 - Runs two paths per question:
   - baseline LLM-only answer
   - RAG answer with retrieval
@@ -54,13 +55,18 @@
 ### 5) Streamlit UI (`src/04_app.py`)
 - Styled interface with curated demo prompts.
 - Shows generated answer and exact retrieved chunks with metadata + similarity.
+- Uses the same centralized ESG RAG prompt templates as the evaluation pipeline.
 - New UX features:
   - one-click `Run Demo Set (3)`
   - session query history
   - export latest query as JSON
   - export full session as Markdown
 
-### 6) Preflight checks (`src/preflight.py`, `scripts/preflight.sh`)
+### 6) Prompt module (`src/rag_prompts.py`)
+- System prompt is now isolated in a dedicated module for easier iteration.
+- Provides both QA and refine template builders used by pipeline and app.
+
+### 7) Preflight checks (`src/preflight.py`, `scripts/preflight.sh`)
 - Verifies dataset/index paths and optional collection readiness.
 - Checks Ollama model availability (can be skipped).
 - `--require-index` fails fast when vector store is missing/empty.
@@ -87,8 +93,9 @@
   - `tests/test_eval_metrics.py`
   - `tests/test_preflight.py`
   - `tests/test_app_demo.py`
+  - `tests/test_rag_prompts.py`
 - Existing tests retained and updated where needed.
-- Current test result: `29 passed`.
+- Current test result: `30 passed`.
 - CI added: `.github/workflows/tests.yml` runs pytest on push/PR (Python 3.11).
 
 ## Repository Hygiene
@@ -101,12 +108,17 @@
 ## Runtime Verification (Latest)
 - Preflight check succeeded:
   - command: `./scripts/preflight.sh --skip-model-check --require-index`
-- Pipeline output generation verified with one live query:
-  - command: `python src/03_rag_pipeline.py --question "Which companies mention renewable energy procurement?" --top-k 3`
-  - output files created under `outputs/eval/`.
+- Prompt-integrated pipeline output verified with one live query:
+  - command: `python src/03_rag_pipeline.py --question "Which companies discuss Scope 1 and Scope 2 emissions reduction targets?" --top-k 3`
+  - result now follows structured sections (`Answer`, `Evidence`, optional `Inference`, `Gaps/Uncertainty`) and cites retrieved source metadata.
+  - output files created under `outputs/eval/`:
+    - `rag_eval_20260422T203544Z.json`
+    - `rag_eval_20260422T203544Z.csv`
 - Metrics generation verified:
   - command: `python src/05_eval_metrics.py`
-  - metrics files created under `outputs/eval/`.
+  - latest metrics files:
+    - `rag_metrics_20260422T203548Z.json`
+    - `rag_metrics_20260422T203548Z.csv`
 
 ## Handoff Commands
 1. `./scripts/setup.sh`
