@@ -2,137 +2,122 @@
 
 ## Current Snapshot
 - Goal: End-to-end local RAG system over S&P 500 ESG sustainability report text.
-- Status: Core codebase, containerization, and automated testing are implemented. Index build, evaluation, and local app startup checks have completed successfully.
+- Status: Implementation is complete for the assignment scope, with reproducible scripts, evaluation artifact export, metrics aggregation, Streamlit demo UX, automated tests, and CI.
 
-## What Has Been Implemented
+## Implemented Components
 
-### 1) Data preparation
-- Implemented `src/01_data_prep.py`.
-- Reads `data/preprocessed_content.csv` and validates required columns:
+### 1) Data preparation (`src/01_data_prep.py`)
+- Reads `data/preprocessed_content.csv` with pandas.
+- Validates required columns:
   - `ticker`
   - `year`
   - `preprocessed_content`
-- Writes one TXT file per row to `data/raw_txt/`.
-- File naming format: `{TICKER}_{YEAR}.txt`.
-- Duplicate ticker-year rows are handled deterministically with suffixes (`_2`, `_3`, ...).
-- Run result in this workspace:
-  - Total rows: `866`
-  - Files written: `866`
-  - Skipped rows: `0`
+- Writes one UTF-8 TXT per valid row into `data/raw_txt/`.
+- Uses deterministic duplicate suffixing (`_2`, `_3`, ...).
 
-### 2) Index build pipeline
-- Implemented `src/02_build_index.py`.
-- Uses:
-  - ChromaDB persistent storage at `vector_db/`
-  - Ollama embeddings: `nomic-embed-text`
-  - LlamaIndex vector store integration
+### 2) Index build (`src/02_build_index.py`)
 - Loads TXT files with `SimpleDirectoryReader`.
-- Performs strict chunking bounds for stored chunks:
-  - min token count: `201`
-  - max token count: `499`
-  - target chunk size: `420`
-- Adds metadata on each stored chunk:
+- Chunking uses strict stored bounds `(201, 499)` with target `420`.
+- Adds chunk metadata:
   - `source_file`
   - `ticker`
   - `year`
-  - `token_count`
   - `chunk_id`
-- Supports `--rebuild` to clear and recreate collection.
+  - `token_count`
+- Embeddings via local Ollama `nomic-embed-text`.
+- Stores vectors in persistent Chroma collection at `vector_db/`.
+- Supports `--rebuild`.
 
-### 3) RAG + baseline evaluation
-- Implemented `src/03_rag_pipeline.py`.
-- Loads persistent Chroma collection and creates query engine with configurable `top-k` (default `3`).
-- Compares:
-  - Baseline LLM answer (no retrieval context)
-  - RAG answer (retrieval + generation)
-- Includes 5 default ESG questions and supports custom questions via CLI.
-- Emits retrieved source file names for each question.
-- Fails fast with actionable errors when index/collection is missing or empty.
+### 3) RAG pipeline + baseline eval (`src/03_rag_pipeline.py`)
+- Loads persisted Chroma index and builds query engine (`top_k`, default `3`).
+- Runs two paths per question:
+  - baseline LLM-only answer
+  - RAG answer with retrieval
+- Prints retrieved source filenames.
+- Supports default 5 questions and CLI overrides (`--question`, `--questions-file`).
+- New: writes machine-readable outputs to `outputs/eval/`:
+  - `rag_eval_*.json`
+  - `rag_eval_*.csv`
 
-### 4) Streamlit UI
-- Implemented `src/04_app.py`.
-- Features:
-  - Question input and answer generation
-  - Cached query engine load (`st.cache_resource`)
-  - Expandable retrieved context inspection
-  - Displays source metadata (`source_file`, `ticker`, `year`) and similarity score
-  - Displays exact retrieved chunk text
+### 4) Evaluation metrics (`src/05_eval_metrics.py`)
+- Loads latest or specified `rag_eval_*.json`.
+- Computes summary metrics:
+  - non-empty answer rates
+  - average answer lengths
+  - average retrieved sources per question
+  - question coverage with citations
+  - unique retrieved source count
+- Writes:
+  - `rag_metrics_*.json`
+  - `rag_metrics_*.csv`
 
-### 5) Shared runtime config + utilities
-- Implemented `src/common.py` with:
-  - env-driven runtime defaults
-  - project-root path resolution
-  - filename sanitization
-  - ticker/year parsing from file names
-  - tokenization and strict chunking helper
-- Shared environment defaults:
-  - `OLLAMA_BASE_URL` (default `http://localhost:11434`)
-  - `OLLAMA_LLM_MODEL` (default `llama3.1`)
-  - `OLLAMA_EMBED_MODEL` (default `nomic-embed-text`)
-  - `CHROMA_PATH` (default `vector_db`)
-  - `CHROMA_COLLECTION` (default `sp500_esg_reports`)
+### 5) Streamlit UI (`src/04_app.py`)
+- Styled interface with curated demo prompts.
+- Shows generated answer and exact retrieved chunks with metadata + similarity.
+- New UX features:
+  - one-click `Run Demo Set (3)`
+  - session query history
+  - export latest query as JSON
+  - export full session as Markdown
 
-### 6) Reproducibility and deployment
-- `requirements.txt` created with LlamaIndex + Ollama + Chroma + Streamlit + pandas dependencies.
-- Multi-stage `Dockerfile` created.
-- `docker-compose.yml` created with:
-  - streamlit port mapping `8501:8501`
-  - `host.docker.internal` access to host Ollama
-  - bind mounts for `data/` and `vector_db/`
-- Chroma compatibility hardening:
-  - `chromadb` pinned to `0.5.23` (avoids segfaults observed with `1.5.8` in this environment).
-  - `posthog<4` pinned to fix Chroma telemetry API mismatch (`capture() takes 1 positional argument...`).
-  - Chroma clients are created with `anonymized_telemetry=False`.
-  - Docker and Compose set `ANONYMIZED_TELEMETRY=FALSE`.
+### 6) Preflight checks (`src/preflight.py`, `scripts/preflight.sh`)
+- Verifies dataset/index paths and optional collection readiness.
+- Checks Ollama model availability (can be skipped).
+- `--require-index` fails fast when vector store is missing/empty.
 
-### 7) Repository hygiene
-- Added `vector_db/` to `.gitignore`.
+## Documentation Added
+- `README.md` refreshed with full workflow and artifact commands.
+- `docs/assignment_mapping.md`
+- `docs/dataset_profile.md`
+- `docs/architecture.md`
+- `docs/results_summary.md`
+- `docs/submission_checklist.md`
+- `data/eval_questions.txt` added (30 ESG evaluation prompts).
+- `.env.example` added for standard runtime configuration.
 
-### 8) Testing and test execution
-- Added comprehensive `pytest` suite under `tests/` covering:
-  - shared utility functions (`src/common.py`)
-  - data preparation behavior (`src/01_data_prep.py`)
-  - index build logic with mocks (`src/02_build_index.py`)
-  - RAG pipeline helper/query-engine loading with mocks (`src/03_rag_pipeline.py`)
-  - Streamlit helper functions (`src/04_app.py`)
-- Added `pytest.ini` for test discovery/config.
-- Added `requirements-dev.txt` for development/test dependencies.
-- Added canonical test runner script: `scripts/test.sh`.
-- Latest test result: `19 passed`.
+## Scripts Added/Updated
+- Added:
+  - `scripts/preflight.sh`
+  - `scripts/eval_metrics.sh`
+- Updated:
+  - `scripts/full_local.sh` now runs metrics after evaluation.
 
-## Runtime Status Right Now
-- Ollama models installed:
-  - `nomic-embed-text:latest`
-  - `llama3.1:latest`
-- Latest completed index run:
-  - Command: `python src/02_build_index.py --rebuild`
-  - Collection: `sp500_esg_reports`
-  - Documents loaded: `866`
-  - Documents skipped: `3`
-  - Chunks created/stored: `24687`
-- Evaluation status:
-  - `src/03_rag_pipeline.py` executes successfully.
-  - Baseline and RAG outputs are printed for sample questions.
-  - Telemetry warnings are no longer printed after dependency/config updates.
-- App status:
-  - Streamlit app starts successfully on `http://localhost:8501`.
-- Test status:
-  - `./scripts/test.sh` passes (`19 passed`).
+## Testing and CI
+- Test suite expanded with new modules:
+  - `tests/test_eval_metrics.py`
+  - `tests/test_preflight.py`
+  - `tests/test_app_demo.py`
+- Existing tests retained and updated where needed.
+- Current test result: `29 passed`.
+- CI added: `.github/workflows/tests.yml` runs pytest on push/PR (Python 3.11).
 
-## What Is Pending
-- Optional: run dockerized app validation (`./scripts/docker_up.sh`).
-- Optional: tune retrieval and generation quality (`SIMILARITY_TOP_K`, prompt wording, question set).
+## Repository Hygiene
+- `.gitignore` updated to:
+  - keep `vector_db/` ignored
+  - keep `outputs/eval/` ignored
+  - keep local dataset artifacts ignored
+  - allow committed `data/eval_questions.txt`
+
+## Runtime Verification (Latest)
+- Preflight check succeeded:
+  - command: `./scripts/preflight.sh --skip-model-check --require-index`
+- Pipeline output generation verified with one live query:
+  - command: `python src/03_rag_pipeline.py --question "Which companies mention renewable energy procurement?" --top-k 3`
+  - output files created under `outputs/eval/`.
+- Metrics generation verified:
+  - command: `python src/05_eval_metrics.py`
+  - metrics files created under `outputs/eval/`.
 
 ## Handoff Commands
-Use the shell scripts in `scripts/` (added in this update):
 1. `./scripts/setup.sh`
-2. `./scripts/prepare_data.sh`
-3. `./scripts/build_index.sh --rebuild`
-4. `./scripts/evaluate.sh`
-5. `./scripts/run_app.sh`
-6. `./scripts/docker_up.sh`
-7. `python -m pip install -r requirements-dev.txt`
-8. `./scripts/test.sh`
+2. `./scripts/preflight.sh`
+3. `./scripts/prepare_data.sh`
+4. `./scripts/build_index.sh --rebuild`
+5. `./scripts/evaluate.sh --questions-file data/eval_questions.txt`
+6. `./scripts/eval_metrics.sh`
+7. `./scripts/run_app.sh`
+8. `python -m pip install -r requirements-dev.txt`
+9. `./scripts/test.sh`
 
-For live indexing status:
+For index monitoring:
 - `./scripts/index_status.sh`

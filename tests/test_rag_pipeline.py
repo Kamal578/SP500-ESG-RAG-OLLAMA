@@ -56,6 +56,25 @@ def test_unique_preserve_order() -> None:
     assert module.unique_preserve_order(["a", "b", "a", "c", "b"]) == ["a", "b", "c"]
 
 
+def test_write_results_creates_json_and_csv(tmp_path: Path) -> None:
+    module = load_src_module("03_rag_pipeline.py", "rag_mod_write")
+    records = [
+        {
+            "question_index": 1,
+            "question": "Q1",
+            "baseline_answer": "B1",
+            "rag_answer": "R1",
+            "retrieved_files": ["AAPL_2022.txt"],
+            "retrieved_chunks": [],
+        }
+    ]
+    json_path, csv_path = module.write_results(records, str(tmp_path / "outputs"))
+    assert json_path.exists()
+    assert csv_path.exists()
+    assert "rag_eval_" in json_path.name
+    assert "rag_eval_" in csv_path.name
+
+
 def test_load_query_engine_missing_path_raises(tmp_path: Path) -> None:
     module = load_src_module("03_rag_pipeline.py", "rag_mod_missing")
     args = Namespace(

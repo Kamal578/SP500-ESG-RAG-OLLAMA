@@ -220,6 +220,13 @@ __marimo__/
 # Mac-specific files
 .DS_Store
 
-# Data 
-data/
+# Data
+data/*
+!data/eval_questions.txt
+data/preprocessed_content.csv
+data/raw_txt/
+
+# Generated local stores and outputs
 vector_db/
+vector_db.zip
+outputs/eval/

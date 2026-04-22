@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import json
 import os
 import sqlite3
+from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 import chromadb
 import streamlit as st
@@ -94,8 +97,8 @@ def inject_custom_styles() -> None:
 
         .stApp {
             background:
-                radial-gradient(900px 500px at 100% -10%, rgba(255, 182, 97, 0.22), transparent 55%),
-                radial-gradient(800px 420px at -5% 15%, rgba(106, 137, 204, 0.20), transparent 58%),
+                radial-gradient(1000px 540px at 100% -5%, rgba(255, 182, 97, 0.24), transparent 56%),
+                radial-gradient(800px 460px at -5% 10%, rgba(106, 137, 204, 0.22), transparent 58%),
                 linear-gradient(180deg, #f4efe6 0%, #ece6dc 100%);
         }
 
@@ -112,7 +115,7 @@ def inject_custom_styles() -> None:
             border: 1px solid rgba(28, 44, 72, 0.16);
             border-radius: 18px;
             padding: 1.1rem 1.15rem;
-            margin-bottom: 0.85rem;
+            margin-bottom: 0.9rem;
             background: linear-gradient(135deg, rgba(255, 255, 255, 0.86), rgba(248, 243, 235, 0.90));
             box-shadow: 0 9px 30px rgba(24, 34, 45, 0.08);
         }
@@ -141,6 +144,7 @@ def inject_custom_styles() -> None:
 
         .meta-pill {
             margin-top: 0.4rem;
+            margin-right: 0.35rem;
             display: inline-block;
             padding: 0.25rem 0.55rem;
             border-radius: 999px;
@@ -161,6 +165,14 @@ def inject_custom_styles() -> None:
             color: #2f475f;
             font-size: 0.9rem;
             margin-bottom: 0.2rem;
+        }
+
+        .history-card {
+            border-radius: 12px;
+            border: 1px solid rgba(43, 63, 92, 0.18);
+            background: rgba(255, 255, 255, 0.72);
+            padding: 0.65rem 0.75rem;
+            margin-bottom: 0.55rem;
         }
 
         .stButton > button, .stDownloadButton > button {
@@ -184,6 +196,109 @@ def ensure_session_state() -> None:
         st.session_state["question_input"] = ""
     if "auto_submit" not in st.session_state:
         st.session_state["auto_submit"] = False
+    if "query_history" not in st.session_state:
+        st.session_state["query_history"] = []
+    if "run_demo_set" not in st.session_state:
+        st.session_state["run_demo_set"] = False
+
+
+def format_score(score: float | None) -> str:
+    if score is None:
+        return "N/A"
+    return f"{score:.4f}"
+
+
+def source_node_to_payload(source_node) -> dict[str, Any]:
+    node = source_node.node
+    metadata = node.metadata if node else {}
+    return {
+        "source_file": metadata.get("source_file", "unknown"),
+        "ticker": metadata.get("ticker", "N/A"),
+        "year": metadata.get("year", "N/A"),
+        "chunk_id": metadata.get("chunk_id"),
+        "token_count": metadata.get("token_count"),
+        "similarity": source_node.score,
+        "text": node.get_content(metadata_mode="none") if node else "",
+    }
+
+
+def response_to_history_entry(question: str, response, asked_at_utc: str | None = None) -> dict[str, Any]:
+    timestamp = asked_at_utc or datetime.now(timezone.utc).isoformat()
+    sources = [source_node_to_payload(s) for s in (response.source_nodes or [])]
+    unique_files = sorted({s["source_file"] for s in sources if s.get("source_file")})
+    return {
+        "asked_at_utc": timestamp,
+        "question": question,
+        "answer": str(response),
+        "source_count": len(sources),
+        "source_files": unique_files,
+        "sources": sources,
+    }
+
+
+def history_to_markdown(history: list[dict[str, Any]]) -> str:
+    lines = ["# ESG RAG Session Export", ""]
+    for idx, entry in enumerate(history, start=1):
+        lines.append(f"## Query {idx}")
+        lines.append(f"- Asked at (UTC): {entry.get('asked_at_utc', 'N/A')}")
+        lines.append(f"- Question: {entry.get('question', '')}")
+        lines.append("- Answer:")
+        lines.append("")
+        lines.append(str(entry.get("answer", "")))
+        lines.append("")
+        source_files = entry.get("source_files", [])
+        lines.append(f"- Source files: {', '.join(source_files) if source_files else 'None'}")
+        lines.append("")
+    return "\n".join(lines)
+
+
+def run_query_and_store(question: str, query_engine) -> dict[str, Any]:
+    response = query_engine.query(question)
+    entry = response_to_history_entry(question, response)
+    st.session_state["query_history"].append(entry)
+    return entry
+
+
+def render_history_sidebar() -> None:
+    history = st.session_state.get("query_history", [])
+    with st.sidebar:
+        st.markdown("---")
+        st.markdown("### Session History")
+        st.caption(f"Stored queries: {len(history)}")
+
+        if not history:
+            st.caption("No queries asked yet.")
+            return
+
+        if st.button("Clear History", use_container_width=True):
+            st.session_state["query_history"] = []
+            st.rerun()
+
+        latest = history[-1]
+        st.download_button(
+            "Export Latest (JSON)",
+            data=json.dumps(latest, indent=2, ensure_ascii=True),
+            file_name="latest_query.json",
+            mime="application/json",
+            use_container_width=True,
+        )
+        st.download_button(
+            "Export Session (Markdown)",
+            data=history_to_markdown(history),
+            file_name="rag_session.md",
+            mime="text/markdown",
+            use_container_width=True,
+        )
+
+        st.markdown("#### Recent Queries")
+        for idx, entry in enumerate(reversed(history[-5:]), start=1):
+            question = entry.get("question", "")
+            truncated = question if len(question) <= 82 else f"{question[:82]}..."
+            st.markdown(
+                f'<div class="history-card"><strong>{idx}.</strong> {truncated}<br/>'
+                f"<small>Sources: {entry.get('source_count', 0)}</small></div>",
+                unsafe_allow_html=True,
+            )
 
 
 def render_demo_sidebar() -> None:
@@ -207,6 +322,10 @@ def render_demo_sidebar() -> None:
         if col_b.button("Load + Ask", use_container_width=True):
             st.session_state["question_input"] = selected_question
             st.session_state["auto_submit"] = True
+            st.rerun()
+
+        if st.button("Run Demo Set (3)", use_container_width=True):
+            st.session_state["run_demo_set"] = True
             st.rerun()
 
         st.markdown("---")
@@ -262,10 +381,45 @@ def load_query_engine(
     return query_engine, vector_count
 
 
-def format_score(score: float | None) -> str:
-    if score is None:
-        return "N/A"
-    return f"{score:.4f}"
+def render_response(entry: dict[str, Any]) -> None:
+    st.markdown("### Answer")
+    st.markdown('<div class="answer-card">', unsafe_allow_html=True)
+    st.write(entry.get("answer", ""))
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    with st.expander("Retrieved Context Chunks", expanded=True):
+        sources = entry.get("sources", [])
+        if not sources:
+            st.info("No source chunks were returned.")
+            return
+
+        for idx, source in enumerate(sources, start=1):
+            st.markdown(f"#### Chunk {idx}")
+            st.markdown(
+                f'<div class="chunk-meta"><strong>Source:</strong> {source.get("source_file", "unknown")} | '
+                f'<strong>Ticker:</strong> {source.get("ticker", "N/A")} | '
+                f'<strong>Year:</strong> {source.get("year", "N/A")} | '
+                f'<strong>Similarity:</strong> {format_score(source.get("similarity"))}</div>',
+                unsafe_allow_html=True,
+            )
+            st.code(source.get("text", ""))
+
+
+def run_demo_set(query_engine) -> None:
+    st.markdown("### Demo Run")
+    demo_subset = DEMO_QUESTIONS[:3]
+    for item in demo_subset:
+        question = item["question"]
+        with st.spinner(f"Running: {item['title']}"):
+            entry = run_query_and_store(question, query_engine)
+        with st.container():
+            st.markdown(f"**{item['title']}**")
+            st.caption(question)
+            st.write(entry["answer"])
+            st.caption(
+                "Sources: "
+                + (", ".join(entry["source_files"]) if entry["source_files"] else "None")
+            )
 
 
 def main() -> None:
@@ -311,6 +465,12 @@ def main() -> None:
     metric_b.metric("Indexed Chunks", "unavailable" if vector_count is None else f"{vector_count:,}")
     metric_c.metric("Context Window", context_window)
 
+    render_history_sidebar()
+
+    if st.session_state.pop("run_demo_set", False):
+        run_demo_set(query_engine)
+        st.markdown("---")
+
     st.markdown("### Ask the System")
     with st.form("query_form"):
         question = st.text_area(
@@ -332,7 +492,7 @@ def main() -> None:
     should_run = submitted or auto_submit
 
     if not should_run:
-        st.caption("Tip: pick a curated prompt from the sidebar for a guided demonstration.")
+        st.caption("Tip: use the sidebar prompts or run the demo set to showcase retrieval quality.")
         return
 
     if not question.strip():
@@ -340,36 +500,8 @@ def main() -> None:
         return
 
     with st.spinner("Running retrieval and generation..."):
-        response = query_engine.query(question.strip())
-
-    st.markdown("### Answer")
-    st.markdown('<div class="answer-card">', unsafe_allow_html=True)
-    st.write(str(response))
-    st.markdown("</div>", unsafe_allow_html=True)
-
-    with st.expander("Retrieved Context Chunks", expanded=True):
-        source_nodes = response.source_nodes or []
-        if not source_nodes:
-            st.info("No source chunks were returned.")
-            return
-
-        for idx, source_node in enumerate(source_nodes, start=1):
-            node = source_node.node
-            metadata = node.metadata if node else {}
-            source_file = metadata.get("source_file", "unknown")
-            ticker = metadata.get("ticker", "N/A")
-            year = metadata.get("year", "N/A")
-            score = format_score(source_node.score)
-
-            st.markdown(f"#### Chunk {idx}")
-            st.markdown(
-                f'<div class="chunk-meta"><strong>Source:</strong> {source_file} | '
-                f'<strong>Ticker:</strong> {ticker} | <strong>Year:</strong> {year} | '
-                f'<strong>Similarity:</strong> {score}</div>',
-                unsafe_allow_html=True,
-            )
-            chunk_text = node.get_content(metadata_mode="none") if node else ""
-            st.code(chunk_text)
+        entry = run_query_and_store(question.strip(), query_engine)
+    render_response(entry)
 
 
 if __name__ == "__main__":

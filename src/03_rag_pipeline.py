@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import argparse
+import csv
+import json
 import os
 import sqlite3
+from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 import chromadb
 from llama_index.core import Settings, VectorStoreIndex
@@ -39,6 +43,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--top-k", type=int, default=int(os.getenv("SIMILARITY_TOP_K", "3")))
     parser.add_argument("--question", action="append", help="Can be provided multiple times.")
     parser.add_argument("--questions-file", help="Path to a file with one question per line.")
+    parser.add_argument("--output-dir", default="outputs/eval")
+    parser.add_argument("--no-save", action="store_true", help="Skip JSON/CSV result export.")
     return parser.parse_args()
 
 
@@ -142,6 +148,84 @@ def unique_preserve_order(values: list[str]) -> list[str]:
     return result
 
 
+def extract_sources_and_chunks(rag_response) -> tuple[list[str], list[dict[str, Any]]]:
+    retrieved_files: list[str] = []
+    chunks: list[dict[str, Any]] = []
+
+    for source_node in rag_response.source_nodes or []:
+        node = source_node.node
+        metadata = node.metadata if node else {}
+        source_file = metadata.get("source_file", "unknown")
+        retrieved_files.append(source_file)
+
+        chunks.append(
+            {
+                "source_file": source_file,
+                "ticker": metadata.get("ticker"),
+                "year": metadata.get("year"),
+                "chunk_id": metadata.get("chunk_id"),
+                "token_count": metadata.get("token_count"),
+                "similarity": source_node.score,
+                "text": node.get_content(metadata_mode="none") if node else "",
+            }
+        )
+
+    return unique_preserve_order(retrieved_files), chunks
+
+
+def build_eval_record(idx: int, question: str, baseline_answer: str, rag_answer: str, rag_response) -> dict[str, Any]:
+    retrieved_files, retrieved_chunks = extract_sources_and_chunks(rag_response)
+    return {
+        "question_index": idx,
+        "question": question,
+        "baseline_answer": baseline_answer,
+        "rag_answer": rag_answer,
+        "retrieved_files": retrieved_files,
+        "retrieved_chunks": retrieved_chunks,
+    }
+
+
+def write_results(records: list[dict[str, Any]], output_dir_arg: str) -> tuple[Path, Path]:
+    output_dir = resolve_from_root(output_dir_arg)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    json_path = output_dir / f"rag_eval_{stamp}.json"
+    csv_path = output_dir / f"rag_eval_{stamp}.csv"
+
+    payload = {
+        "generated_at_utc": stamp,
+        "question_count": len(records),
+        "records": records,
+    }
+    json_path.write_text(json.dumps(payload, indent=2, ensure_ascii=True), encoding="utf-8")
+
+    fieldnames = [
+        "question_index",
+        "question",
+        "baseline_answer",
+        "rag_answer",
+        "retrieved_sources_count",
+        "retrieved_sources",
+    ]
+    with csv_path.open("w", encoding="utf-8", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        for record in records:
+            writer.writerow(
+                {
+                    "question_index": record["question_index"],
+                    "question": record["question"],
+                    "baseline_answer": record["baseline_answer"],
+                    "rag_answer": record["rag_answer"],
+                    "retrieved_sources_count": len(record["retrieved_files"]),
+                    "retrieved_sources": " | ".join(record["retrieved_files"]),
+                }
+            )
+
+    return json_path, csv_path
+
+
 def main() -> int:
     args = parse_args()
     questions = load_questions(args)
@@ -156,16 +240,14 @@ def main() -> int:
     print(f"Context window: {args.context_window}")
     print(f"Similarity top-k: {args.top_k}")
 
+    records: list[dict[str, Any]] = []
     for idx, question in enumerate(questions, start=1):
         baseline_answer = llm.complete(question).text.strip()
         rag_response = query_engine.query(question)
         rag_answer = str(rag_response).strip()
 
-        retrieved_files: list[str] = []
-        for source_node in rag_response.source_nodes or []:
-            metadata = source_node.node.metadata if source_node.node else {}
-            retrieved_files.append(metadata.get("source_file", "unknown"))
-        retrieved_files = unique_preserve_order(retrieved_files)
+        record = build_eval_record(idx, question, baseline_answer, rag_answer, rag_response)
+        records.append(record)
 
         print("=" * 100)
         print(f"Question {idx}: {question}")
@@ -177,12 +259,19 @@ def main() -> int:
         print(rag_answer)
         print("-" * 100)
         print("Retrieved source files:")
-        if retrieved_files:
-            for source in retrieved_files:
+        if record["retrieved_files"]:
+            for source in record["retrieved_files"]:
                 print(f"- {source}")
         else:
             print("- None")
+
     print("=" * 100)
+
+    if not args.no_save:
+        json_path, csv_path = write_results(records, args.output_dir)
+        print(f"Saved evaluation JSON: {json_path}")
+        print(f"Saved evaluation CSV: {csv_path}")
+
     return 0
 
 

@@ -17,33 +17,39 @@ Dataset used: https://www.kaggle.com/datasets/jaidityachopra/esg-sustainability-
 ```text
 project_root/
 ├── data/
-│   ├── preprocessed_content.csv
-│   └── raw_txt/
-├── vector_db/
+│   ├── preprocessed_content.csv          # local (not committed)
+│   ├── raw_txt/                          # generated
+│   └── eval_questions.txt                # committed question bank
+├── docs/
+│   ├── architecture.md
+│   ├── assignment_mapping.md
+│   ├── dataset_profile.md
+│   ├── results_summary.md
+│   └── submission_checklist.md
+├── outputs/
+│   └── eval/                             # generated eval artifacts
+├── vector_db/                            # generated local index
 ├── src/
 │   ├── 01_data_prep.py
 │   ├── 02_build_index.py
 │   ├── 03_rag_pipeline.py
 │   ├── 04_app.py
-│   └── common.py
-├── tests/
-├── pytest.ini
+│   ├── 05_eval_metrics.py
+│   ├── common.py
+│   └── preflight.py
 ├── scripts/
+├── tests/
+├── .env.example
 ├── Dockerfile
 ├── docker-compose.yml
 ├── requirements.txt
 ├── requirements-dev.txt
-├── project_progress.md
-└── README.md
+├── pytest.ini
+└── project_progress.md
 ```
 
-## Prerequisites
-- Python 3.11+
-- Ollama installed and running locally
-- Docker + Docker Compose (for containerized run)
-
 ## Environment Variables
-Defaults are built-in, but can be overridden:
+Defaults are built-in but can be overridden:
 - `OLLAMA_BASE_URL` (default: `http://localhost:11434`)
 - `OLLAMA_LLM_MODEL` (default: `llama3.1`)
 - `OLLAMA_EMBED_MODEL` (default: `nomic-embed-text`)
@@ -52,18 +58,20 @@ Defaults are built-in, but can be overridden:
 - `SIMILARITY_TOP_K` (default: `3`)
 - `OLLAMA_CONTEXT_WINDOW` (default: `2048`)
 
-## Quick Start (Local)
+## Local Quick Start
 ```bash
 ./scripts/setup.sh
+./scripts/preflight.sh
 ./scripts/prepare_data.sh
 ./scripts/build_index.sh --rebuild
-./scripts/evaluate.sh
+./scripts/evaluate.sh --questions-file data/eval_questions.txt
+./scripts/eval_metrics.sh
 ./scripts/run_app.sh
 ```
 
 Open Streamlit at `http://localhost:8501`.
 
-## Quick Start (Docker)
+## Docker Quick Start
 ```bash
 ./scripts/setup.sh
 ./scripts/prepare_data.sh
@@ -71,42 +79,54 @@ Open Streamlit at `http://localhost:8501`.
 ./scripts/docker_up.sh
 ```
 
-The containerized app expects Ollama to run on the host and uses `http://host.docker.internal:11434`.
+The containerized app uses host Ollama via `http://host.docker.internal:11434`.
+
+## Evaluation Commands
+Run baseline vs RAG and write machine-readable outputs:
+```bash
+python src/03_rag_pipeline.py --questions-file data/eval_questions.txt
+```
+
+Compute summary metrics from latest evaluation output:
+```bash
+python src/05_eval_metrics.py
+```
+
+Generated artifacts:
+- `outputs/eval/rag_eval_*.json`
+- `outputs/eval/rag_eval_*.csv`
+- `outputs/eval/rag_metrics_*.json`
+- `outputs/eval/rag_metrics_*.csv`
 
 ## Testing
-Install test dependencies and run the suite:
+Install test dependencies and run the full test suite:
 ```bash
 python -m pip install -r requirements-dev.txt
 ./scripts/test.sh
 ```
 
-Run with coverage:
+With coverage:
 ```bash
 ./scripts/test.sh --cov=src --cov-report=term-missing
 ```
 
+CI runs the same test command via GitHub Actions (`.github/workflows/tests.yml`).
+
 ## Script Reference
-- `scripts/setup.sh`: install Python dependencies, verify Ollama, pull required models.
+- `scripts/setup.sh`: install dependencies and pull Ollama models.
+- `scripts/preflight.sh`: validate environment, files, and optional index state.
 - `scripts/prepare_data.sh`: split CSV rows into TXT files in `data/raw_txt`.
 - `scripts/build_index.sh`: build/rebuild Chroma vector index.
-- `scripts/index_status.sh`: show index process status + current vector count.
-- `scripts/evaluate.sh`: baseline vs RAG comparison on sample questions.
+- `scripts/index_status.sh`: inspect index process + current vector count.
+- `scripts/evaluate.sh`: baseline vs RAG evaluation.
+- `scripts/eval_metrics.sh`: compute metrics from evaluation JSON.
 - `scripts/run_app.sh`: run Streamlit app locally.
-- `scripts/full_local.sh`: run prepare → build index → evaluate.
+- `scripts/full_local.sh`: prepare -> build index -> evaluate -> metrics.
 - `scripts/docker_up.sh`: build and start Streamlit container.
 - `scripts/docker_down.sh`: stop container.
-- `scripts/test.sh`: run pytest test suite.
-
-## Manual Commands
-```bash
-python src/01_data_prep.py
-python src/02_build_index.py --rebuild
-python src/03_rag_pipeline.py
-streamlit run src/04_app.py
-```
+- `scripts/test.sh`: run pytest suite.
 
 ## Notes
-- `vector_db/` is git-ignored by design (generated local state).
-- `data/` is currently ignored in `.gitignore`; keep a local copy of `preprocessed_content.csv`.
-- Index building can take significant time for this dataset and model setup.
-- Chroma telemetry warnings are suppressed by pinned compatibility deps (`chromadb==0.5.23`, `posthog<4`) and `anonymized_telemetry=False` client settings.
+- `vector_db/` and `outputs/eval/` are generated and git-ignored.
+- `data/preprocessed_content.csv` is git-ignored; keep a local copy.
+- Chroma telemetry warnings are mitigated by pinned versions (`chromadb==0.5.23`, `posthog<4`) and telemetry-off client settings.
