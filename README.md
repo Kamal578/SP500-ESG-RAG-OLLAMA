@@ -26,10 +26,13 @@ project_root/
 │   ├── 03_rag_pipeline.py
 │   ├── 04_app.py
 │   └── common.py
+├── tests/
+├── pytest.ini
 ├── scripts/
 ├── Dockerfile
 ├── docker-compose.yml
 ├── requirements.txt
+├── requirements-dev.txt
 ├── project_progress.md
 └── README.md
 ```
@@ -70,6 +73,18 @@ Open Streamlit at `http://localhost:8501`.
 
 The containerized app expects Ollama to run on the host and uses `http://host.docker.internal:11434`.
 
+## Testing
+Install test dependencies and run the suite:
+```bash
+python -m pip install -r requirements-dev.txt
+./scripts/test.sh
+```
+
+Run with coverage:
+```bash
+./scripts/test.sh --cov=src --cov-report=term-missing
+```
+
 ## Script Reference
 - `scripts/setup.sh`: install Python dependencies, verify Ollama, pull required models.
 - `scripts/prepare_data.sh`: split CSV rows into TXT files in `data/raw_txt`.
@@ -80,6 +95,7 @@ The containerized app expects Ollama to run on the host and uses `http://host.do
 - `scripts/full_local.sh`: run prepare → build index → evaluate.
 - `scripts/docker_up.sh`: build and start Streamlit container.
 - `scripts/docker_down.sh`: stop container.
+- `scripts/test.sh`: run pytest test suite.
 
 ## Manual Commands
 ```bash
