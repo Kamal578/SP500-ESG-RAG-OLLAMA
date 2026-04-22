@@ -2,7 +2,7 @@
 
 ## Current Snapshot
 - Goal: End-to-end local RAG system over S&P 500 ESG sustainability report text.
-- Status: Core codebase and containerization are implemented. Index build, evaluation, and local app startup checks have completed successfully.
+- Status: Core codebase, containerization, and automated testing are implemented. Index build, evaluation, and local app startup checks have completed successfully.
 
 ## What Has Been Implemented
 
@@ -88,6 +88,18 @@
 ### 7) Repository hygiene
 - Added `vector_db/` to `.gitignore`.
 
+### 8) Testing and test execution
+- Added comprehensive `pytest` suite under `tests/` covering:
+  - shared utility functions (`src/common.py`)
+  - data preparation behavior (`src/01_data_prep.py`)
+  - index build logic with mocks (`src/02_build_index.py`)
+  - RAG pipeline helper/query-engine loading with mocks (`src/03_rag_pipeline.py`)
+  - Streamlit helper functions (`src/04_app.py`)
+- Added `pytest.ini` for test discovery/config.
+- Added `requirements-dev.txt` for development/test dependencies.
+- Added canonical test runner script: `scripts/test.sh`.
+- Latest test result: `19 passed`.
+
 ## Runtime Status Right Now
 - Ollama models installed:
   - `nomic-embed-text:latest`
@@ -104,6 +116,8 @@
   - Telemetry warnings are no longer printed after dependency/config updates.
 - App status:
   - Streamlit app starts successfully on `http://localhost:8501`.
+- Test status:
+  - `./scripts/test.sh` passes (`19 passed`).
 
 ## What Is Pending
 - Optional: run dockerized app validation (`./scripts/docker_up.sh`).
@@ -117,6 +131,8 @@ Use the shell scripts in `scripts/` (added in this update):
 4. `./scripts/evaluate.sh`
 5. `./scripts/run_app.sh`
 6. `./scripts/docker_up.sh`
+7. `python -m pip install -r requirements-dev.txt`
+8. `./scripts/test.sh`
 
 For live indexing status:
 - `./scripts/index_status.sh`

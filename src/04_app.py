@@ -14,6 +14,42 @@ from llama_index.vector_stores.chroma import ChromaVectorStore
 from common import chroma_persistent_client, resolve_from_root, runtime_config_from_env
 
 
+DEMO_QUESTIONS = [
+    {
+        "title": "Scope 1/2 Emissions Targets",
+        "question": "Which companies in the dataset discuss Scope 1 and Scope 2 emissions reduction targets, and how do they frame those targets?",
+    },
+    {
+        "title": "Board-Level ESG Oversight",
+        "question": "How do companies describe board oversight and governance accountability for ESG or sustainability strategy?",
+    },
+    {
+        "title": "Workforce Diversity Metrics",
+        "question": "What workforce diversity and inclusion metrics are reported most frequently across the ESG reports?",
+    },
+    {
+        "title": "Renewable Energy Initiatives",
+        "question": "What are the most commonly mentioned renewable energy initiatives, and which companies mention them?",
+    },
+    {
+        "title": "Community Investment Themes",
+        "question": "Which social impact themes appear most often in community investment sections of these ESG reports?",
+    },
+    {
+        "title": "Supply Chain + Human Rights",
+        "question": "What actions do companies report for responsible sourcing, supplier oversight, and human rights protections?",
+    },
+    {
+        "title": "Net-Zero or Decarbonization",
+        "question": "Which decarbonization pathways are discussed most often (efficiency, renewable procurement, electrification, offsets)?",
+    },
+    {
+        "title": "Assurance and Reporting Frameworks",
+        "question": "Which external reporting frameworks or assurance standards are most frequently referenced (e.g., GRI, SASB, TCFD)?",
+    },
+]
+
+
 def collection_exists(client: chromadb.PersistentClient, target: str) -> bool:
     collections = client.list_collections()
     for item in collections:
@@ -48,6 +84,134 @@ def collection_has_records(collection) -> bool:
     sample = collection.peek(limit=1)
     ids = sample.get("ids", []) if isinstance(sample, dict) else []
     return bool(ids)
+
+
+def inject_custom_styles() -> None:
+    st.markdown(
+        """
+        <style>
+        @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Serif:wght@500;600&display=swap');
+
+        .stApp {
+            background:
+                radial-gradient(900px 500px at 100% -10%, rgba(255, 182, 97, 0.22), transparent 55%),
+                radial-gradient(800px 420px at -5% 15%, rgba(106, 137, 204, 0.20), transparent 58%),
+                linear-gradient(180deg, #f4efe6 0%, #ece6dc 100%);
+        }
+
+        html, body, [class*="css"]  {
+            font-family: 'Space Grotesk', sans-serif;
+        }
+
+        h1, h2, h3 {
+            font-family: 'IBM Plex Serif', serif !important;
+            letter-spacing: -0.01em;
+        }
+
+        .hero-wrap {
+            border: 1px solid rgba(28, 44, 72, 0.16);
+            border-radius: 18px;
+            padding: 1.1rem 1.15rem;
+            margin-bottom: 0.85rem;
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.86), rgba(248, 243, 235, 0.90));
+            box-shadow: 0 9px 30px rgba(24, 34, 45, 0.08);
+        }
+
+        .hero-eyebrow {
+            font-size: 0.74rem;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: #4c678a;
+            font-weight: 700;
+            margin: 0;
+        }
+
+        .hero-title {
+            margin: 0.2rem 0 0;
+            color: #1d2d44;
+            font-size: 1.9rem;
+            line-height: 1.15;
+        }
+
+        .hero-subtitle {
+            margin: 0.35rem 0 0;
+            color: #2f3d4d;
+            font-size: 0.98rem;
+        }
+
+        .meta-pill {
+            margin-top: 0.4rem;
+            display: inline-block;
+            padding: 0.25rem 0.55rem;
+            border-radius: 999px;
+            font-size: 0.78rem;
+            color: #203a53;
+            background: rgba(159, 183, 210, 0.32);
+            border: 1px solid rgba(69, 100, 136, 0.25);
+        }
+
+        .answer-card {
+            border-radius: 14px;
+            padding: 0.95rem 0.95rem 0.5rem;
+            border: 1px solid rgba(43, 63, 92, 0.15);
+            background: rgba(255, 255, 255, 0.78);
+        }
+
+        .chunk-meta {
+            color: #2f475f;
+            font-size: 0.9rem;
+            margin-bottom: 0.2rem;
+        }
+
+        .stButton > button, .stDownloadButton > button {
+            border-radius: 11px !important;
+            border: 1px solid rgba(54, 74, 102, 0.25) !important;
+            background: linear-gradient(180deg, rgba(255,255,255,0.92), rgba(244,238,228,0.94)) !important;
+        }
+
+        .stButton > button:hover {
+            border-color: rgba(54, 74, 102, 0.50) !important;
+            transform: translateY(-1px);
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def ensure_session_state() -> None:
+    if "question_input" not in st.session_state:
+        st.session_state["question_input"] = ""
+    if "auto_submit" not in st.session_state:
+        st.session_state["auto_submit"] = False
+
+
+def render_demo_sidebar() -> None:
+    with st.sidebar:
+        st.markdown("### Demonstration Questions")
+        st.caption("Load realistic ESG prompts to quickly showcase retrieval quality.")
+
+        selected_idx = st.selectbox(
+            "Question Bank",
+            options=range(len(DEMO_QUESTIONS)),
+            format_func=lambda idx: f"{idx + 1}. {DEMO_QUESTIONS[idx]['title']}",
+        )
+        selected_question = DEMO_QUESTIONS[selected_idx]["question"]
+        st.caption(selected_question)
+
+        col_a, col_b = st.columns(2)
+        if col_a.button("Load", use_container_width=True):
+            st.session_state["question_input"] = selected_question
+            st.session_state["auto_submit"] = False
+            st.rerun()
+        if col_b.button("Load + Ask", use_container_width=True):
+            st.session_state["question_input"] = selected_question
+            st.session_state["auto_submit"] = True
+            st.rerun()
+
+        st.markdown("---")
+        st.markdown("### Runtime")
+        st.caption("Use the main panel to run RAG and inspect exact retrieved context chunks.")
 
 
 @st.cache_resource(show_spinner=False)
@@ -109,8 +273,24 @@ def main() -> None:
     top_k = int(os.getenv("SIMILARITY_TOP_K", "3"))
     context_window = int(os.getenv("OLLAMA_CONTEXT_WINDOW", "2048"))
 
-    st.set_page_config(page_title="S&P 500 ESG RAG", layout="wide")
-    st.title("S&P 500 ESG Sustainability Reports RAG")
+    st.set_page_config(page_title="S&P 500 ESG RAG", page_icon="📊", layout="wide")
+    inject_custom_styles()
+    ensure_session_state()
+    render_demo_sidebar()
+
+    st.markdown(
+        f"""
+        <div class="hero-wrap">
+            <p class="hero-eyebrow">LOCAL ESG RAG DEMONSTRATION</p>
+            <h1 class="hero-title">S&amp;P 500 Sustainability Intelligence</h1>
+            <p class="hero-subtitle">Query indexed ESG reports with transparent retrieval traces and source-grounded answers.</p>
+            <span class="meta-pill">LLM: {cfg.llm_model}</span>
+            <span class="meta-pill">Embedding: {cfg.embed_model}</span>
+            <span class="meta-pill">top-k: {top_k}</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     try:
         query_engine, vector_count = load_query_engine(
@@ -126,21 +306,33 @@ def main() -> None:
         st.error(str(exc))
         st.stop()
 
-    if vector_count is None:
-        st.caption(
-            f"Collection: {cfg.chroma_collection} | Vector count: unavailable | Context window: {context_window}"
-        )
-    else:
-        st.caption(
-            f"Collection: {cfg.chroma_collection} | Vector count: {vector_count} | Context window: {context_window}"
-        )
+    metric_a, metric_b, metric_c = st.columns(3)
+    metric_a.metric("Vector Collection", cfg.chroma_collection)
+    metric_b.metric("Indexed Chunks", "unavailable" if vector_count is None else f"{vector_count:,}")
+    metric_c.metric("Context Window", context_window)
 
+    st.markdown("### Ask the System")
     with st.form("query_form"):
-        question = st.text_input("Ask a question about ESG reports")
-        submitted = st.form_submit_button("Generate answer")
+        question = st.text_area(
+            "Question",
+            key="question_input",
+            height=115,
+            placeholder="Ask about emissions, governance, social impact, diversity, or reporting frameworks.",
+        )
+        submit_col, clear_col = st.columns(2)
+        submitted = submit_col.form_submit_button("Generate Answer", use_container_width=True)
+        clear_clicked = clear_col.form_submit_button("Clear", use_container_width=True)
 
-    if not submitted:
-        st.caption("Enter a question and click Generate answer.")
+    if clear_clicked:
+        st.session_state["question_input"] = ""
+        st.session_state["auto_submit"] = False
+        st.rerun()
+
+    auto_submit = st.session_state.pop("auto_submit", False)
+    should_run = submitted or auto_submit
+
+    if not should_run:
+        st.caption("Tip: pick a curated prompt from the sidebar for a guided demonstration.")
         return
 
     if not question.strip():
@@ -150,8 +342,10 @@ def main() -> None:
     with st.spinner("Running retrieval and generation..."):
         response = query_engine.query(question.strip())
 
-    st.subheader("Answer")
+    st.markdown("### Answer")
+    st.markdown('<div class="answer-card">', unsafe_allow_html=True)
     st.write(str(response))
+    st.markdown("</div>", unsafe_allow_html=True)
 
     with st.expander("Retrieved Context Chunks", expanded=True):
         source_nodes = response.source_nodes or []
@@ -167,9 +361,13 @@ def main() -> None:
             year = metadata.get("year", "N/A")
             score = format_score(source_node.score)
 
-            st.markdown(f"**Chunk {idx}**")
-            st.write(f"Source file: {source_file}")
-            st.write(f"Ticker: {ticker} | Year: {year} | Similarity score: {score}")
+            st.markdown(f"#### Chunk {idx}")
+            st.markdown(
+                f'<div class="chunk-meta"><strong>Source:</strong> {source_file} | '
+                f'<strong>Ticker:</strong> {ticker} | <strong>Year:</strong> {year} | '
+                f'<strong>Similarity:</strong> {score}</div>',
+                unsafe_allow_html=True,
+            )
             chunk_text = node.get_content(metadata_mode="none") if node else ""
             st.code(chunk_text)
 
